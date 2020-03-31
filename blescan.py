@@ -32,6 +32,10 @@ OCF_LE_SET_SCAN_ENABLE=0x000C
 EVT_LE_CONN_COMPLETE=0x01
 EVT_LE_ADVERTISING_REPORT=0x02
 
+#from MF_Functions.py import sMinewTempData
+#from MF_Functions.py import sGetTemperatureFromMinewTempData
+
+
 def getBLESocket(devID):
 	return bluez.hci_open_dev(devID)
 
@@ -44,99 +48,149 @@ def getBLESocket(devID):
 #    return myInteger
 
 def returnstringpacket(pkt):
-    myString = "";
-    for i in range(len(pkt)):
-        myString += "%02x" %struct.unpack("B",pkt[i:i+1])[0]
-    return myString
+	myString = "";
+	for i in range(len(pkt)):
+		myString += "%02x" %struct.unpack("B",pkt[i:i+1])[0]
+	return myString
 
 #def printpacket(pkt):
 #    for i in range(len(pkt)):
 #        sys.stdout.write("%02x " % struct.unpack("B",pkt[i:i+1])[0])
 
 def get_packed_bdaddr(bdaddr_string):
-    packable_addr = []
-    addr = bdaddr_string.split(':')
-    addr.reverse()
-    for b in addr:
-        packable_addr.append(int(b, 16))
-    return struct.pack("<BBBBBB", *packable_addr)
+	packable_addr = []
+	addr = bdaddr_string.split(':')
+	addr.reverse()
+	for b in addr:
+		packable_addr.append(int(b, 16))
+	return struct.pack("<BBBBBB", *packable_addr)
 
 def packed_bdaddr_to_string(bdaddr_packed):
-    return ':'.join('%02x'%i for i in struct.unpack("<BBBBBB", bdaddr_packed[::-1]))
+	return ':'.join('%02x'%i for i in struct.unpack("<BBBBBB", bdaddr_packed[::-1]))
 
 def hci_enable_le_scan(sock):
-    hci_toggle_le_scan(sock, 0x01)
+	hci_toggle_le_scan(sock, 0x01)
 
 def hci_disable_le_scan(sock):
-    hci_toggle_le_scan(sock, 0x00)
+	hci_toggle_le_scan(sock, 0x00)
 
 def hci_toggle_le_scan(sock, enable):
-    cmd_pkt = struct.pack("<BB", enable, 0x00)
-    bluez.hci_send_cmd(sock, OGF_LE_CTL, OCF_LE_SET_SCAN_ENABLE, cmd_pkt)
+	cmd_pkt = struct.pack("<BB", enable, 0x00)
+	bluez.hci_send_cmd(sock, OGF_LE_CTL, OCF_LE_SET_SCAN_ENABLE, cmd_pkt)
 
 def hci_le_set_scan_parameters(sock):
-    old_filter = sock.getsockopt( bluez.SOL_HCI, bluez.HCI_FILTER, 14)
+	old_filter = sock.getsockopt( bluez.SOL_HCI, bluez.HCI_FILTER, 14)
 
 def parse_events(sock, loop_count=100):
-    old_filter = sock.getsockopt( bluez.SOL_HCI, bluez.HCI_FILTER, 14)
-    flt = bluez.hci_filter_new()
-    bluez.hci_filter_all_events(flt)
-    bluez.hci_filter_set_ptype(flt, bluez.HCI_EVENT_PKT)
-    sock.setsockopt( bluez.SOL_HCI, bluez.HCI_FILTER, flt )
-    myFullList = []
-    for i in range(0, loop_count):
-        pkt = sock.recv(255)
-        ptype, event, plen = struct.unpack("BBB", pkt[:3])
-        if event == bluez.EVT_INQUIRY_RESULT_WITH_RSSI:
-            i = 0
-        elif event == bluez.EVT_NUM_COMP_PKTS:
-            i = 0
-        elif event == bluez.EVT_DISCONN_COMPLETE:
-            i = 0
-        elif event == LE_META_EVENT:
-            subevent, = struct.unpack("B", pkt[3:4])
-            pkt = pkt[4:]
-            if subevent == EVT_LE_CONN_COMPLETE:
-                le_handle_connection_complete(pkt)
-            elif subevent == EVT_LE_ADVERTISING_REPORT:
-                num_reports = struct.unpack("B", pkt[0:1])[0]
-                report_pkt_offset = 0
-                for i in range(0, num_reports):
-                    # build the return string
-                    Adstring = packed_bdaddr_to_string(pkt[report_pkt_offset + 3:report_pkt_offset + 9])
-                    Adstring += ',' + returnstringpacket(pkt[report_pkt_offset -22: report_pkt_offset - 6])
-                    #Adstring += ',' + "%i" % returnnumberpacket(pkt[report_pkt_offset -6: report_pkt_offset - 4])
-                    Adstring += ',' + returnstringpacket(pkt[report_pkt_offset -6: report_pkt_offset - 4])
-                    #Adstring += ',' + "%i" % returnnumberpacket(pkt[report_pkt_offset -4: report_pkt_offset - 2])
-                    Adstring += ',' + returnstringpacket(pkt[report_pkt_offset -4: report_pkt_offset - 2])
-                    try:
-                        #Adstring += ',' + "%i" % struct.unpack("b", pkt[report_pkt_offset -2:report_pkt_offset -1])
-                        Adstring += ',' + returnstringpacket(pkt[report_pkt_offset -2:report_pkt_offset -1])
-                        #The last byte is always 00; we don't really need it
-                        #Adstring += ',' + "%i" % struct.unpack("b", pkt[report_pkt_offset -1:report_pkt_offset])
-                        #Adstring += ',' + returnstringpacket(pkt[report_pkt_offset -1:report_pkt_offset])
-                    except: 1
-                    #Prevent duplicates in results
-                    if Adstring not in myFullList: myFullList.append(Adstring)
-    sock.setsockopt( bluez.SOL_HCI, bluez.HCI_FILTER, old_filter )
-    return myFullList
+	old_filter = sock.getsockopt( bluez.SOL_HCI, bluez.HCI_FILTER, 14)
+	flt = bluez.hci_filter_new()
+	bluez.hci_filter_all_events(flt)
+	bluez.hci_filter_set_ptype(flt, bluez.HCI_EVENT_PKT)
+	sock.setsockopt( bluez.SOL_HCI, bluez.HCI_FILTER, flt )
+	myFullList = []
+	for i in range(0, loop_count):
+		pkt = sock.recv(255)
+		ptype, event, plen = struct.unpack("BBB", pkt[:3])
+		if event == bluez.EVT_INQUIRY_RESULT_WITH_RSSI:
+			i = 0
+		elif event == bluez.EVT_NUM_COMP_PKTS:
+			i = 0
+		elif event == bluez.EVT_DISCONN_COMPLETE:
+			i = 0
+		elif event == LE_META_EVENT:
+			subevent, = struct.unpack("B", pkt[3:4])
+			pkt = pkt[4:]
+			if subevent == EVT_LE_CONN_COMPLETE:
+				le_handle_connection_complete(pkt)
+			elif subevent == EVT_LE_ADVERTISING_REPORT:
+				num_reports = struct.unpack("B", pkt[0:1])[0]
+				report_pkt_offset = 0
+				for i in range(0, num_reports):
+					# build the return string
+					Adstring = packed_bdaddr_to_string(pkt[report_pkt_offset + 3:report_pkt_offset + 9])
+					Adstring += ',' + returnstringpacket(pkt[report_pkt_offset -22: report_pkt_offset - 6])
+					#Adstring += ',' + "%i" % returnnumberpacket(pkt[report_pkt_offset -6: report_pkt_offset - 4])
+					Adstring += ',' + returnstringpacket(pkt[report_pkt_offset -6: report_pkt_offset - 4])
+					#Adstring += ',' + "%i" % returnnumberpacket(pkt[report_pkt_offset -4: report_pkt_offset - 2])
+					Adstring += ',' + returnstringpacket(pkt[report_pkt_offset -4: report_pkt_offset - 2])
+					try:
+						#Adstring += ',' + "%i" % struct.unpack("b", pkt[report_pkt_offset -2:report_pkt_offset -1])
+						Adstring += ',' + returnstringpacket(pkt[report_pkt_offset -2:report_pkt_offset -1])
+						#The last byte is always 00; we don't really need it
+						#Adstring += ',' + "%i" % struct.unpack("b", pkt[report_pkt_offset -1:report_pkt_offset])
+						#Adstring += ',' + returnstringpacket(pkt[report_pkt_offset -1:report_pkt_offset])
+					except: 1
+					#Prevent duplicates in results
+					if Adstring not in myFullList: myFullList.append(Adstring)
+	sock.setsockopt( bluez.SOL_HCI, bluez.HCI_FILTER, old_filter )
+	return myFullList
+
+import string 
+
+csMAC_Address = "ac:23:3f:a2:53:89"
+# Battery in 50, Temp data is in 13c2          
+#    ____MAC Addr_____ _______Data1____________BBTTTT__ _D2_ _D3_ D4  
+a = "ac:23:3f:a2:53:89,01060303e1ff0e16e1ffa1135013c289,53a2,3f23,ac"
+#                      00010203040506070809101112131415        
+
+# ---------------------------------------------------------------------
+# The blescan code returns a string separated by commas.
+# Split the received Bluetooth frame into a list of 5 parts.
+# First check the MAC address to see if it is our Beacon
+# If that packet contains the MAC address, pass the P1-Data1
+# packet to extact the Temperature. 
+# Battery in 50, Temp data is in 13c2          
+#    _P0_MAC Addr_____ _______P1_Data1_________BBTTTT__ _P2_ _P3_ P4  
+#   "ac:23:3f:a2:53:89,01060303e1ff0e16e1ffa1135013c289,53a2,3f23,ac"
+#                      00010203040506070809101112131415        
+# ---------------------------------------------------------------------
+
+def sMinewTempData(sReceivedPacket):
+	sTemp = ""
+	sPkt = sReceivedPacket.split(",") 
+	if sPkt[0] == "ac:23:3f:a2:53:89": # Our MAC address
+		if (sPkt[1][20:22].upper() == "A1"):
+			if(sPkt[1][22:24].upper() == "13"):
+				sTemp = sGetTemperatureFromMinewTempData(sPkt[1])
+	return sTemp
+
+# ---------------------------------------------------------------------
+# Will take the P1_Data1 string and get the TTTT data.
+# Per the definition above the  
+# ---------------------------------------------------------------------
+def sGetTemperatureFromMinewTempData(sMinewPkt):
+	sTemp = sMinewPkt[26:30] 			# Get TTTT ex13C2
+	iTemp = int(sTemp, 16)  			# convert string to int
+	iTempHigh = iTemp >> 8  			# get upper byte, 0x13 = 19
+	fTempLow = float(iTemp & 0x00FF) 	# Get lower byte C2	
+	fTempLow = (fTempLow/256) * 100  	# Get the floating fraction
+	fTempLow = round(fTempLow)
+	sTemp = str(iTempHigh) + "." + str(int(fTempLow))
+	return(sTemp)
+
 
 if __name__ == '__main__':
-    dev_id = 0
-    try:
-        sock = bluez.hci_open_dev(dev_id)
-        print("ble thread started")
-    except:
-        print("error accessing bluetooth device...")
-        sys.exit(1)
+	dev_id = 0
+	try:
+		sock = bluez.hci_open_dev(dev_id)
+		print("ble thread started - blescan.py")
+	except:
+		print("error accessing bluetooth device...")
+		sys.exit(1)
 
-    hci_le_set_scan_parameters(sock)
-    hci_enable_le_scan(sock)
-
-    while True:
-        returnedList = parse_events(sock, 10)
-        print("----------")
-        for beacon in returnedList:
-            print(beacon)
+	hci_le_set_scan_parameters(sock)
+	hci_enable_le_scan(sock)
+	x = 1
+	print("----------")
+	while True:
+		returnedList = parse_events(sock, 10)        
+		for beacon in returnedList:
+			sTemp = sMinewTempData(beacon)
+			if (sTemp != ""):
+				print("index: "+ str(x) + " - "+ sTemp)
+				# every 10 lines, add a separator
+				if (x % 10 == 0): 
+					print("--------------------------------------------------------------")
+				x = x + 1
 
    

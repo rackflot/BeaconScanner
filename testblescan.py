@@ -17,7 +17,7 @@ dev_id = 0
 # ptvsd.wait_for_attach()
 
 sock = bluez.hci_open_dev(dev_id)
-print ("ble thread started")
+print ("ble thread started - testblescan.py")
 
 blescan.hci_le_set_scan_parameters(sock)
 blescan.hci_enable_le_scan(sock)
@@ -26,12 +26,12 @@ x = 0
 # str sBeacon 
 while True:
     returnedList = blescan.parse_events(sock, 10)
-    try:
-        returnedList.sort()
+    #try:
+    #    returnedList.sort()
         # x = returnedList.index("b940")
-        break
-    except ValueError:
-        print("wtf")
+    #    break
+    #except ValueError:
+    #    print("wtf")
     print ("----------")
     for beacon in returnedList:
         print (beacon)
