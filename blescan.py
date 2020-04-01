@@ -23,6 +23,7 @@ import os
 import sys
 import struct
 import bluetooth._bluetooth as bluez
+import time
 
 LE_META_EVENT = 0x3e
 OGF_LE_CTL=0x08
@@ -159,13 +160,19 @@ def sMinewTempData(sReceivedPacket):
 # Per the definition above the  
 # ---------------------------------------------------------------------
 def sGetTemperatureFromMinewTempData(sMinewPkt):
-	sTemp = sMinewPkt[26:30] 			# Get TTTT ex13C2
-	iTemp = int(sTemp, 16)  			# convert string to int
-	iTempHigh = iTemp >> 8  			# get upper byte, 0x13 = 19
-	fTempLow = float(iTemp & 0x00FF) 	# Get lower byte C2	
-	fTempLow = (fTempLow/256) * 100  	# Get the floating fraction
-	fTempLow = round(fTempLow)
-	sTemp = str(iTempHigh) + "." + str(int(fTempLow))
+	sCTemp = sMinewPkt[26:30] 			# Get TTTT ex13C2
+	iCTemp = int(sCTemp, 16)  			# convert string to int
+	# Convert iCTemp from hex to Centigrade. 
+	iCTempHigh = iCTemp >> 8  			# get upper byte, 0x13 = 19
+	fCTempLow = float(iCTemp & 0x00FF) 	# Get lower byte C2	
+	fCTempLow = (fCTempLow/256) * 100  	# Get the floating fraction
+	fCTempLow = round(fCTempLow)		# round it to 2 decimal points
+	sTemp = str(iCTempHigh) + "." + str(int(fCTempLow)) + " Centigrade, "
+	# Convert from Centigrade to Fahrenheit)	
+	fTempF = round(((9.0/5.0 * (iCTempHigh + fCTempLow/100) + 32.0)), 2)
+	sFTemp = str(fTempF)
+	# Concatenate the Strings 
+	sTemp = sTemp + sFTemp + " Fahrenheit"
 	return(sTemp)
 
 
@@ -187,7 +194,10 @@ if __name__ == '__main__':
 		for beacon in returnedList:
 			sTemp = sMinewTempData(beacon)
 			if (sTemp != ""):
-				print("index: "+ str(x) + " - "+ sTemp)
+				seconds = time.time()
+				local_time = time.ctime(seconds)
+
+				print("Local Time: " + local_time + ", index: "+ str(x) + " - "+ sTemp)
 				# every 10 lines, add a separator
 				if (x % 10 == 0): 
 					print("--------------------------------------------------------------")
