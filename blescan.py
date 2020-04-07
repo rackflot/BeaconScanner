@@ -141,7 +141,7 @@ if __name__ == '__main__':
 	hci_le_set_scan_parameters(sock)
 	hci_enable_le_scan(sock)
 	x = 1
-	print("----------")
+	print("----------") 
 	while True:
 		returnedList = parse_events(sock, 10)        
 		for beacon in returnedList:
