@@ -34,5 +34,5 @@ while True:
     #    print("wtf")
     print ("----------")
     for beacon in returnedList:
-        print (beacon)
+        print (beacon) 
 
