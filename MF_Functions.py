@@ -83,7 +83,7 @@ def getRAMInfoStr():
 	i = 0
 	while 1:
 		i = i + 1
-		RAM_stats = p.readline()
+		RAM_stats = p.readline() 
 		if i==2:
 			# return(RAM_stats.split()[1:4])
 			RAM_stats = RAM_stats.split()[1:4]
