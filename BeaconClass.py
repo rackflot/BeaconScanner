@@ -7,9 +7,14 @@ import psutil
 import mysql.connector as mariadb
 from time import strftime  
 
+import blescan # import entire blescan.py file
+import sys
+import bluetooth._bluetooth as bluez
+import ptvsd
+ 
 def dateTime(): #get UNIX time  
 		secs = float(time.time())  
-		secs = secs*1000  
+		#secs = secs*1000  
 		return secs  
 
 def sGetTimeStamp():
@@ -29,6 +34,7 @@ pktBeaconDemo = "ac:23:3f:a2:53:89,01060303e1ff0e16e1ffa1135013c289,53a2,3f23,ac
 # csMself.fTemperatureFAC_Address = "ac:23:3f:a2:53:89"
 
 #db = mariadb.connect(host="localhost", user="root", password="flicket", database="sensor") # replace password with your password  
+# put the next two lines 
 db = mariadb.connect(host="localhost", user='root', password='flicket', database='sensor') # replace password with your password  
 cur = db.cursor()  
 
@@ -43,12 +49,13 @@ class iBeaconPkt:
 		self.sBatteryBytes = ""
 
 	# ---------------------------------------------------------------------
-	# The blescan code returns a string separated by commas.
+	# The blescan code returns a string separated by commas. 
 	# Split the received Bluetooth frame into a list of 5 parts.
 	# First check the MAC address to see if it is our Beacon
 	# If that packet contains the MAC address, pass the P1-Data1
 	# packet to extact the Temperature. 
 	# Battery BB is 50, Temp TTTT is 13c2.
+	# MMMM identifies this packet.
 	# The MAC address from the beacon can contain many frames. We are looking
 	# for the frame with Temp and Battery in it in this example below.        
 	#    _P0_MAC Addr_____ _______P1_Data1_____MMMMBBTTTT__ _P2_ _P3_ P4  
@@ -59,8 +66,8 @@ class iBeaconPkt:
 	def sParseBeacon(self, sReceivedPacket):
 		sPkt = sReceivedPacket.split(",") 
 		if sPkt[0] == self.sMAC_Addr: # Our MAC address
-			if (sPkt[1][20:22].upper() == "A1"):
-				if(sPkt[1][22:24].upper() == "13"):
+			if (sPkt[1][20:22].upper() == "A1"): # Identify the right temp/batt packet
+				if(sPkt[1][22:24].upper() == "13"): # Must be A113
 					# ---------------------------------------------------------------------
 					# Will take the P1_Data1 string and get the BB data.
 					# Per the definition above the  
@@ -80,6 +87,13 @@ class iBeaconPkt:
 					self.fTemperatureC = iCTempHigh + fCTempLow  	# Get the floating fraction
 					# Convert from Centigrade to Fahrenheit)	
 					self.fTemperatureF = round(((9.0/5.0 * self.fTemperatureC + 32.0)), 2)
+					return 1
+				else:
+					self.fTemperatureC = 0.0
+					self.fTemperatureF = 0.0
+					self.iBattery = 0
+					return 0
+	
 
 
 	def fGetTemperatureF(self):
@@ -93,37 +107,61 @@ class iBeaconPkt:
 
 		
 if __name__ == '__main__':
+	dev_id = 0
+	try:
+		sock = bluez.hci_open_dev(dev_id)
+		print("ble thread started - blescan.py")
+	except:
+		print("error accessing bluetooth device...")
+		sys.exit(1)
+	blescan.hci_le_set_scan_parameters(sock)
+	blescan.hci_enable_le_scan(sock)
 
-	x = iBeaconPkt(sMAC_Address)
-	x.sParseBeacon(pktBeaconDemo)
-	fTempC = x.fGetTemperatureC()
-	fTempF = x.fGetTemperatureF()
-	iBattery = x.iGetBatteryLife()
+	x = iBeaconPkt(sMAC_Address)  # send in mac address we are looking for
 
-	sDate = sGetTimeStamp()
-	iDate = dateTime()
-	
-	sql = ("""INSERT INTO pool (datetime,temperature) VALUES (%s,%s)""", (iDate, fTempF)) 
+	y = 1
+	print("----------") 
+	try:
+		while True:    	
+			# The list of found iBeacons
+			returnedList = blescan.parse_events(sock, 10)        
+			# Cyle through them looking for a particular MAC address. 
+			for beacon in returnedList:		
+				if(x.sParseBeacon(beacon) == 1): # get the data out of it in the class, must return pos value, if 0, no beacon found.
+					fTempC = x.fGetTemperatureC()  # Get converted Temp C
+					fTempF = x.fGetTemperatureF()  # Get converted Temp F
+					iBattery = x.iGetBatteryLife() # Get converted Battery Life
 
-	try:  
-		print ("Writing to the database...")  
-		cur.execute(*sql)  
-		db.commit()  
-		print ("Write complete")  
+					iDate = dateTime() # Epoch time 1588812981.889311
+					sDate = time.ctime(iDate) # convert to 'Wed May  6 20:56:21 2020'
 
-		cur.execute("SELECT datetime, temperature FROM pool" )
+					sql = ("""INSERT INTO pool (datetime,sdate,temperature) VALUES (%s,%s,%s)""", (iDate, sDate, fTempF)) 
 
-		for (datetime, temperature) in cur:
-			print("time: "+str(datetime) + ", Temp: "+ str(temperature))
-	
-	except:  
-		db.rollback()  
-		print ("We have a problem")  
-	
-	cur.close()  
-	db.close()  
+					try: # We will Open and Close the database to keep it safe  
+						db = mariadb.connect(host="localhost", user='root', password='flicket', database='sensor') # replace password with your password  
+						cur = db.cursor()  
+						print ("Writing to the database...")  
+						cur.execute(*sql)  
+						db.commit()  
+						print ("Write complete")  
 
-	print("Temp F: " + str(fTempF) + ", Temp C: " + str(fTempC) + ", Battery Level: " + str(iBattery) + "%")
+						cur.execute("SELECT datetime, sdate, temperature FROM pool" )
+
+						for (datetime, sdate, temperature) in cur:
+							print("Date: "+sdate+", time: "+str(datetime) + ", Temp: "+ str(temperature))
+					
+					except:  
+						db.rollback()  
+						print ("We have a problem")  
+					
+					cur.close()  
+					db.close()  
+
+					print("Temp F: " + str(fTempF) + ", Temp C: " + str(fTempC) + ", Battery Level: " + str(iBattery) + "%")
+	except KeyboardInterrupt:
+		cur.close()  
+		db.close()
+		pass
 
 """
 	# CPU informatiom
